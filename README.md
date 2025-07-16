@@ -127,7 +127,7 @@ After the deployment, you will have the Prediction Service url, you could use th
 
 <img width="536" height="909" alt="image" src="https://github.com/user-attachments/assets/00e87c26-8f50-407e-bc1a-75234a5853dd" />
 
-### Step 5: Deploy Prediction Service
+### Step 5: Monitoring
 
 - Go to the Airflow UI at http://localhost:8080
 - Run 'ml_monitoring_pipeline' task for saving prediction result (simulated), this task will be run yearly.
