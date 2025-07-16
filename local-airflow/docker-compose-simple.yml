@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  airflow-standalone:
+    image: apache/airflow:2.10.4-python3.12
+    container_name: airflow-standalone
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
+      - AIRFLOW__WEBSERVER__WEB_SERVER_PORT=8080
+      - AWS_DEFAULT_REGION=ap-southeast-1
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+      - MLFLOW_S3_ARTIFACT_ROOT=${MLFLOW_S3_ARTIFACT_ROOT}
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=${AIRFLOW_ADMIN_PASSWORD}
+      - _AIRFLOW_DB_MIGRATE=true
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./config:/opt/airflow/config
+      - ./data:/opt/airflow/data
+      - ~/.aws:/home/airflow/.aws:ro
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "
+        pip install boto3 mlflow xgboost optuna scikit-learn pandas numpy python-dotenv psycopg2-binary &&
+        airflow db init &&
+        airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin &&
+        airflow standalone
+      "
+    user: "0:0"
+    restart: unless-stopped

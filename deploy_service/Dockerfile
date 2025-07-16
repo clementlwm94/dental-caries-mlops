@@ -13,11 +13,11 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen
 
 # Copy application files
-COPY test.py predict.py main.py ./
+COPY service_test.py predict_function.py ./
 COPY templates/ ./templates/
 
 # Expose port
 EXPOSE 9696
 
 # Run the application with gunicorn
-CMD ["uv", "run", "gunicorn", "--bind=0.0.0.0:9696", "test:app"]
+CMD ["uv", "run", "gunicorn", "--bind=0.0.0.0:9696", "service_test:app"]
