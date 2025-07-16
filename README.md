@@ -111,7 +111,7 @@ cd terraform/
 This will:
 - Delete Google Cloud Run service
 - Remove container images
-- Destroy all AWS infrastructure (RDS, S3, ECS, VPC)
+- Destroy all Google cloud infrastructure
 - Clean up everything safely
 
 ### Test Coverage
@@ -163,7 +163,6 @@ pytest -x
 # If all tests pass, deploy:
 cd ../aws-ecs && ./deploy-mlflow.sh
 cd ../local-airflow && ./start-airflow.sh
-cd ../deploy_service && gcloud run deploy dental-prediction --source .
 ```
 
 # Project Progress
