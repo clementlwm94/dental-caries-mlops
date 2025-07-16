@@ -43,6 +43,34 @@ This project implements a full MLOps pipeline with:
    - Mlflow
    - Airflow
    - Evindently AI
+  
+### Authentication Setup
+```bash
+# 1. Configure GCP CLI
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+
+# 2. Enable required GCP APIs
+gcloud services enable run.googleapis.com
+gcloud services enable containerregistry.googleapis.com
+gcloud services enable cloudsql.googleapis.com
+gcloud services enable storage.googleapis.com
+```
+
+### Environment Variables Setup
+```bash
+# 1. Copy environment template
+cp ../.env.template ../.env
+
+# 2. Update .env file with actual values:
+# - EVIDENTLY_TOKEN (get from Evidently Cloud)
+# - EVIDENTLY_ORG_ID (get from Evidently Cloud)
+# - CLOUDSQL_PASSWORD (set a secure password)
+# - AIRFLOW_ADMIN_PASSWORD (set a secure password)
+# - AIRFLOW_FERNET_KEY (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+# - GOOGLE_APPLICATION_CREDENTIALS (path to service account key)
+# - GCP_PROJECT_ID (your GCP project ID)
+```
 
 ### Step 1: Clone and Configure
 
@@ -98,6 +126,16 @@ cd ../terraform
 After the deployment, you will have the Prediction Service url, you could use this website to predict whether the child will have caries by filling up the form
 
 <img width="536" height="909" alt="image" src="https://github.com/user-attachments/assets/00e87c26-8f50-407e-bc1a-75234a5853dd" />
+
+### Step 5: Deploy Prediction Service
+
+- Go to the Airflow UI at http://localhost:8080
+- Run 'ml_monitoring_pipeline' task for saving prediction result (simulated), this task will be run yearly.
+- The Monitoring report will be uploaded to the evindently AI
+<img width="1407" height="579" alt="image" src="https://github.com/user-attachments/assets/48ef3b34-0d59-4001-bf3c-b5f48de4915c" />
+
+
+
 
 
 ## 🧹 **Cleanup**
