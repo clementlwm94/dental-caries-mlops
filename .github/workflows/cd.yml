@@ -1,0 +1,145 @@
+name: 🚀 Continuous Deployment
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-central1
+
+jobs:
+  deploy:
+    name: 🏗️ Deploy to GCP
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔐 Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: ☁️ Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ env.GCP_PROJECT_ID }}
+
+    - name: 🐳 Configure Docker for GCR
+      run: |
+        gcloud auth configure-docker --quiet
+
+    - name: 🏗️ Build and push MLflow image
+      run: |
+        cd terraform
+        docker build -f Dockerfile.mlflow -t gcr.io/${{ env.GCP_PROJECT_ID }}/mlflow-server:${{ github.sha }} .
+        docker push gcr.io/${{ env.GCP_PROJECT_ID }}/mlflow-server:${{ github.sha }}
+
+        # Also tag as latest for staging
+        if [ "${{ github.event.inputs.environment || 'staging' }}" = "staging" ]; then
+          docker tag gcr.io/${{ env.GCP_PROJECT_ID }}/mlflow-server:${{ github.sha }} gcr.io/${{ env.GCP_PROJECT_ID }}/mlflow-server:latest
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/mlflow-server:latest
+        fi
+
+    - name: 🤖 Build and push prediction service image
+      run: |
+        cd deploy_service
+        docker build -t gcr.io/${{ env.GCP_PROJECT_ID }}/dental-prediction:${{ github.sha }} .
+        docker push gcr.io/${{ env.GCP_PROJECT_ID }}/dental-prediction:${{ github.sha }}
+
+        # Also tag as latest for staging
+        if [ "${{ github.event.inputs.environment || 'staging' }}" = "staging" ]; then
+          docker tag gcr.io/${{ env.GCP_PROJECT_ID }}/dental-prediction:${{ github.sha }} gcr.io/${{ env.GCP_PROJECT_ID }}/dental-prediction:latest
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/dental-prediction:latest
+        fi
+
+    - name: 🏗️ Set up Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.5.0
+
+    - name: 📋 Create terraform.tfvars from secrets
+      run: |
+        cd terraform
+        cat > terraform.tfvars << EOF
+        gcp_project_id = "${{ env.GCP_PROJECT_ID }}"
+        gcp_region = "${{ env.GCP_REGION }}"
+        cloudsql_password = "${{ secrets.CLOUDSQL_PASSWORD }}"
+        EOF
+
+    - name: 🚀 Deploy infrastructure with Terraform
+      run: |
+        cd terraform
+        terraform init
+        terraform plan -out=tfplan
+        terraform apply tfplan
+
+    - name: 📊 Get deployment URLs
+      id: urls
+      run: |
+        cd terraform
+        echo "mlflow_url=$(terraform output -raw mlflow_url)" >> $GITHUB_OUTPUT
+        # Prediction service URL (only if model exists)
+        if terraform output prediction_service_url 2>/dev/null; then
+          echo "prediction_url=$(terraform output -raw prediction_service_url)" >> $GITHUB_OUTPUT
+        fi
+
+    - name: 🧪 Health check deployments
+      run: |
+        # Wait for MLflow to be ready
+        echo "⏳ Waiting for MLflow to be ready..."
+        for i in {1..10}; do
+          if curl -s "${{ steps.urls.outputs.mlflow_url }}/health" > /dev/null; then
+            echo "✅ MLflow is healthy!"
+            break
+          fi
+          echo "Waiting... ($i/10)"
+          sleep 30
+        done
+
+        # Check prediction service if deployed
+        if [ -n "${{ steps.urls.outputs.prediction_url }}" ]; then
+          echo "⏳ Checking prediction service..."
+          if curl -s "${{ steps.urls.outputs.prediction_url }}/" > /dev/null; then
+            echo "✅ Prediction service is healthy!"
+          else
+            echo "⚠️ Prediction service not responding yet"
+          fi
+        fi
+
+    - name: 📝 Create deployment summary
+      run: |
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ github.event.inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit SHA:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**MLflow URL:** ${{ steps.urls.outputs.mlflow_url }}" >> $GITHUB_STEP_SUMMARY
+        if [ -n "${{ steps.urls.outputs.prediction_url }}" ]; then
+          echo "**Prediction URL:** ${{ steps.urls.outputs.prediction_url }}" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🧪 Quick Test Commands" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo "# Test MLflow" >> $GITHUB_STEP_SUMMARY
+        echo "curl ${{ steps.urls.outputs.mlflow_url }}/health" >> $GITHUB_STEP_SUMMARY
+        if [ -n "${{ steps.urls.outputs.prediction_url }}" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Test prediction service" >> $GITHUB_STEP_SUMMARY
+          echo 'curl -X POST ${{ steps.urls.outputs.prediction_url }}/predict \' >> $GITHUB_STEP_SUMMARY
+          echo '  -H "Content-Type: application/json" \' >> $GITHUB_STEP_SUMMARY
+          echo '  -d '"'"'{"race": "chinese", "age": 25, "gender": "female"}'"'"'' >> $GITHUB_STEP_SUMMARY
+        fi
+        echo '```' >> $GITHUB_STEP_SUMMARY

@@ -1,5 +1,4 @@
 import logging
-from typing import List, Optional, Union
 
 import mlflow
 import mlflow.sklearn
@@ -49,8 +48,8 @@ class xgb_model:
         Initialize the MLflow XGBoost predictor.
 
         Args:
-            model_name (str, optional): Name of the registered model in MLflow
-            model_version (str, optional): Version alias (e.g., "champion", "latest") or version number
+            model_name: Name of the registered model in MLflow
+            model_version: Version alias (e.g., "champion")
         """
         self.model = None
         self.model_name = model_name
@@ -64,8 +63,8 @@ class xgb_model:
         Load XGBoost model from MLflow model registry.
 
         Args:
-            model_name (str): Name of the registered model in MLflow
-            model_version (str): Version alias (e.g., "champion", "latest") or version number
+            model_name: Name of the registered model in MLflow
+            model_version: Version alias (e.g., "champion")
         """
         try:
             # Construct model URI

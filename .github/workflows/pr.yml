@@ -1,0 +1,108 @@
+name: 🔍 Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint-and-format:
+    name: 🧹 Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 📦 Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install black isort flake8
+
+    - name: 🖤 Check code formatting with Black
+      run: black --check --diff .
+
+    - name: 📋 Check import sorting with isort
+      run: isort --check-only --diff .
+
+    - name: 🔍 Lint with flake8
+      run: flake8 . --max-line-length=88 --extend-ignore=E203,W503
+
+  test-changes:
+    name: 🧪 Test Changed Files
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Need full history for changed files
+
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r tests/requirements.txt
+
+    - name: 🔍 Find changed Python files
+      id: changed-files
+      run: |
+        changed_files=$(git diff --name-only origin/main...HEAD | grep '\.py$' || true)
+        echo "changed_files=$changed_files" >> $GITHUB_OUTPUT
+
+    - name: 🧪 Run targeted tests
+      if: steps.changed-files.outputs.changed_files != ''
+      run: |
+        cd tests
+        # Run tests based on changed files
+        if echo "${{ steps.changed-files.outputs.changed_files }}" | grep -q "deploy_service"; then
+          python -m pytest test_deploy_service.py -v
+        fi
+        if echo "${{ steps.changed-files.outputs.changed_files }}" | grep -q "local-airflow"; then
+          python -m pytest test_ml_functions.py -v
+        fi
+        # Always run integration tests for critical changes
+        python -m pytest test_integration.py -v
+
+  docker-check:
+    name: 🐳 Docker Build Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🔍 Check if Dockerfiles changed
+      id: docker-changed
+      run: |
+        if git diff --name-only origin/main...HEAD | grep -E "(Dockerfile|docker-compose)" > /dev/null; then
+          echo "docker_changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "docker_changed=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: 🏗️ Test Docker builds
+      if: steps.docker-changed.outputs.docker_changed == 'true'
+      run: |
+        echo "🐳 Testing Docker builds..."
+
+        # Test MLflow build
+        cd terraform
+        docker build -f Dockerfile.mlflow -t test-mlflow .
+
+        # Test prediction service build
+        cd ../deploy_service
+        docker build -t test-prediction .
+
+        echo "✅ All Docker builds successful!"
